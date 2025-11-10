@@ -57,6 +57,17 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
+        exhibit: {
+          terracotta: "hsl(var(--exhibit-terracotta))",
+          beige: "hsl(var(--exhibit-beige))",
+          grey: "hsl(var(--exhibit-grey))",
+          cream: "hsl(var(--exhibit-cream))",
+          dark: "hsl(var(--exhibit-dark))",
+        },
+      },
+      fontFamily: {
+        serif: ['Crimson Text', 'Georgia', 'serif'],
+        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'sans-serif'],
       },
       borderRadius: {
         lg: "var(--radius)",
