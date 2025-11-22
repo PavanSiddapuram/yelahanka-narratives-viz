@@ -87,48 +87,196 @@ const walkLifeInventoryHotspots: Hotspot[] = [
 
 export default function Exhibition() {
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen relative overflow-hidden">
+      {/* Animated background wires */}
+      <motion.svg 
+        className="fixed inset-0 w-full h-full pointer-events-none opacity-5 z-0"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 0.05 }}
+        transition={{ duration: 2 }}
+      >
+        {[...Array(8)].map((_, i) => (
+          <motion.line
+            key={`bg-wire-${i}`}
+            x1={`${i * 12.5}%`}
+            y1="0"
+            x2={`${i * 12.5}%`}
+            y2="100%"
+            stroke="hsl(var(--foreground))"
+            strokeWidth="0.5"
+            initial={{ pathLength: 0 }}
+            animate={{ pathLength: 1 }}
+            transition={{ duration: 3, delay: i * 0.1, ease: "easeInOut" }}
+          />
+        ))}
+        {[...Array(6)].map((_, i) => (
+          <motion.line
+            key={`bg-wire-h-${i}`}
+            x1="0"
+            y1={`${i * 16.6}%`}
+            x2="100%"
+            y2={`${i * 16.6}%`}
+            stroke="hsl(var(--foreground))"
+            strokeWidth="0.5"
+            initial={{ pathLength: 0 }}
+            animate={{ pathLength: 1 }}
+            transition={{ duration: 3, delay: i * 0.1, ease: "easeInOut" }}
+          />
+        ))}
+      </motion.svg>
+      
       <Navigation />
-      <div className="pt-24">
+      <div className="pt-24 relative z-10">
         {/* Hero Section */}
         <motion.section 
-          className="min-h-screen flex items-center justify-center textured-bg px-6"
+          className="min-h-screen flex items-center justify-center textured-bg px-6 relative overflow-hidden"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 1.2 }}
         >
-          <div className="max-w-5xl text-center">
+          {/* Radial wire emanation from center */}
+          <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-10">
+            {[...Array(12)].map((_, i) => {
+              const angle = (i * 360) / 12;
+              return (
+                <motion.line
+                  key={`radial-${i}`}
+                  x1="50%"
+                  y1="50%"
+                  x2={`${50 + 45 * Math.cos((angle * Math.PI) / 180)}%`}
+                  y2={`${50 + 45 * Math.sin((angle * Math.PI) / 180)}%`}
+                  stroke="hsl(var(--primary))"
+                  strokeWidth="1"
+                  initial={{ pathLength: 0, opacity: 0 }}
+                  animate={{ pathLength: 1, opacity: 0.4 }}
+                  transition={{ duration: 2, delay: i * 0.1, ease: "easeOut" }}
+                />
+              );
+            })}
+          </svg>
+
+          {/* Central pulse */}
+          <motion.div
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-primary/40"
+            animate={{
+              scale: [1, 20, 1],
+              opacity: [0.6, 0, 0.6],
+            }}
+            transition={{
+              duration: 4,
+              repeat: Infinity,
+              ease: "easeInOut"
+            }}
+          />
+
+          <div className="max-w-5xl text-center relative z-10">
             <motion.h1 
               className="font-serif text-5xl md:text-7xl lg:text-8xl text-primary mb-8 tracking-tight"
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3, duration: 0.8 }}
             >
-              Spatial Narratives of
+              <motion.span
+                className="inline-block"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.5 }}
+              >
+                Spatial
+              </motion.span>{" "}
+              <motion.span
+                className="inline-block"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.7 }}
+              >
+                Narratives
+              </motion.span>{" "}
+              <motion.span
+                className="inline-block"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.9 }}
+              >
+                of
+              </motion.span>
               <br />
-              Yelahanka New Town
+              <motion.span
+                className="inline-block"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 1.1 }}
+              >
+                Yelahanka
+              </motion.span>{" "}
+              <motion.span
+                className="inline-block"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 1.3 }}
+              >
+                New
+              </motion.span>{" "}
+              <motion.span
+                className="inline-block"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 1.5 }}
+              >
+                Town
+              </motion.span>
             </motion.h1>
             <motion.p 
               className="text-lg md:text-xl text-foreground/70 leading-relaxed mb-12"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.5, duration: 0.8 }}
+              transition={{ delay: 1.7, duration: 0.8 }}
             >
               An interactive exploration of urban space, community, and the stories woven into the built environment
             </motion.p>
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.7, duration: 0.6 }}
+              transition={{ delay: 1.9, duration: 0.6 }}
             >
-              <button 
+              <motion.button 
                 onClick={() => document.getElementById('commercial-proximity')?.scrollIntoView({ behavior: 'smooth' })}
-                className="px-8 py-4 bg-primary text-primary-foreground rounded-sm hover:bg-primary/90 transition-all duration-300 tracking-wide uppercase text-sm font-medium shadow-lg hover:shadow-xl"
+                className="relative px-8 py-4 bg-primary text-primary-foreground rounded-sm hover:bg-primary/90 transition-all duration-300 tracking-wide uppercase text-sm font-medium shadow-lg hover:shadow-xl overflow-hidden"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
               >
-                Begin Exploration
-              </button>
+                <motion.span
+                  className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent"
+                  initial={{ x: "-100%" }}
+                  whileHover={{ x: "100%" }}
+                  transition={{ duration: 0.6 }}
+                />
+                <span className="relative">Begin Exploration</span>
+              </motion.button>
             </motion.div>
           </div>
+
+          {/* Corner wire decorations */}
+          <svg className="absolute top-8 left-8 w-24 h-24 pointer-events-none opacity-20">
+            <motion.path
+              d="M 0 0 L 96 0 M 0 0 L 0 96"
+              stroke="hsl(var(--primary))"
+              strokeWidth="2"
+              initial={{ pathLength: 0 }}
+              animate={{ pathLength: 1 }}
+              transition={{ duration: 1.5, delay: 2 }}
+            />
+          </svg>
+          <svg className="absolute bottom-8 right-8 w-24 h-24 pointer-events-none opacity-20">
+            <motion.path
+              d="M 96 96 L 0 96 M 96 96 L 96 0"
+              stroke="hsl(var(--primary))"
+              strokeWidth="2"
+              initial={{ pathLength: 0 }}
+              animate={{ pathLength: 1 }}
+              transition={{ duration: 1.5, delay: 2 }}
+            />
+          </svg>
         </motion.section>
 
         {/* Commercial Proximity */}
