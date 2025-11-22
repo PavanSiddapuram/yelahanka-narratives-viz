@@ -63,6 +63,8 @@ export default {
           grey: "hsl(var(--exhibit-grey))",
           cream: "hsl(var(--exhibit-cream))",
           dark: "hsl(var(--exhibit-dark))",
+          glow: "hsl(var(--exhibit-glow))",
+          deep: "hsl(var(--exhibit-deep))",
         },
       },
       fontFamily: {

@@ -40,7 +40,6 @@ const BuildingShapeMesh = memo(
         onUpdate={(mesh) => {
           mesh.updateMatrixWorld();
         }}
-        onDispose={() => disposeGeometry(geometry)}
       >
         <meshStandardMaterial
           color={materialColors.base}
