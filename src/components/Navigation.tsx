@@ -3,22 +3,37 @@ import { useState, useEffect } from "react";
 
 const sections = [
   { id: "home", label: "Home" },
-  { id: "open-gated", label: "Open / Gated" },
-  { id: "commercial-proximity", label: "Commercial Proximity" },
-  { id: "walk-life", label: "Walk-Life Inventory" },
-  { id: "spectrum", label: "Spectrum of Appropriation" },
-  { id: "setting", label: "Setting & Materiality" },
-  { id: "urban-futures", label: "Urban Futures" },
+  { id: "terrain", label: "Terrain" },
+  { id: "theme-open", label: "Open / Gated" },
+  { id: "theme-commerce", label: "Commercial Synergy" },
+  { id: "theme-walk", label: "Walk-Life" },
+  { id: "theme-spectrum", label: "Appropriation" },
+  { id: "theme-future", label: "Urban Futures" }
 ];
 
 export const Navigation = () => {
   const [isScrolled, setIsScrolled] = useState(false);
+  const [activeSection, setActiveSection] = useState<string>("home");
 
   useEffect(() => {
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 50);
+
+      let current = "home";
+      for (const section of sections) {
+        const el = document.getElementById(section.id);
+        if (el) {
+          const rect = el.getBoundingClientRect();
+          if (rect.top <= window.innerHeight * 0.35 && rect.bottom >= window.innerHeight * 0.25) {
+            current = section.id;
+            break;
+          }
+        }
+      }
+      setActiveSection(current);
     };
     window.addEventListener("scroll", handleScroll);
+    handleScroll();
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
@@ -48,14 +63,20 @@ export const Navigation = () => {
           </button>
           
           <div className="hidden lg:flex items-center gap-6">
-            {sections.slice(1).map((section) => (
+            {sections.map((section) => (
               <button
                 key={section.id}
                 onClick={() => scrollToSection(section.id)}
-                className="font-sans text-sm text-foreground/70 hover:text-primary transition-colors relative group"
+                className={`font-sans text-xs uppercase tracking-[0.35em] transition-colors relative group ${
+                  activeSection === section.id ? "text-primary" : "text-foreground/60 hover:text-primary"
+                }`}
               >
                 {section.label}
-                <span className="absolute bottom-0 left-0 w-0 h-0.5 bg-primary group-hover:w-full transition-all duration-300" />
+                <span
+                  className={`absolute -bottom-1 left-0 h-0.5 bg-primary transition-all duration-300 ${
+                    activeSection === section.id ? "w-full" : "w-0 group-hover:w-full"
+                  }`}
+                />
               </button>
             ))}
           </div>

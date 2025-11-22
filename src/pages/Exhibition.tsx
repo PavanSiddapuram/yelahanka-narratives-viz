@@ -1,270 +1,600 @@
-import { ExhibitSection } from "@/components/ExhibitSection";
-import { InteractiveMap, Hotspot } from "@/components/InteractiveMap";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import * as THREE from "three";
+import { Canvas, useFrame, useThree, useLoader } from "@react-three/fiber";
+import { Environment, Float, Html, MapControls, SoftShadows, SpotLight, useProgress } from "@react-three/drei";
+import { motion, AnimatePresence, MotionConfig, useMotionValueEvent, useSpring, useScroll, useTransform } from "framer-motion";
 import { Navigation } from "@/components/Navigation";
-import { motion } from "framer-motion";
-import commercialProximity from "@/assets/commercial-proximity.jpg";
-import settingMateriality from "@/assets/setting-materiality.jpg";
-import planned from "@/assets/planned.jpg";
-import openGated from "@/assets/open-gated.jpg";
-import urbanFutures1 from "@/assets/urban-futures-1.jpg";
-import spectrumAppropriation from "@/assets/spectrum-appropriation.jpg";
-import walkLifeInventory from "@/assets/walk-life-inventory.jpg";
+import { BuildingExtrusions } from "@/components/BuildingExtrusions";
+import { useHotspots, type HotspotZone } from "@/hooks/useHotspots";
+import type { MotionValue } from "framer-motion";
 
-const commercialHotspots: Hotspot[] = [
-  {
-    id: "scene-01",
-    x: 15,
-    y: 45,
-    title: "Scene 01 - Main Corridor",
-    description: "The main commercial corridor functions as the primary circulation spine, hosting diverse temporary and permanent vendors. This space exhibits high pedestrian flow and creates opportunities for spontaneous interactions."
+interface ZonePanelProps {
+  isOpen: boolean;
+  onClose: () => void;
+  zone?: HotspotZone;
+}
+
+const hotspotThemes: Record<HotspotZone["theme"], { title: string; subtitle: string; accent: string; panelBlur: string }> = {
+  open: {
+    title: "Open / Gated",
+    subtitle: "Thresholds between open streets and gated enclaves",
+    accent: "from-[#d4bba6]/60 via-[#dce0d6]/30 to-[#cfe0e8]/80",
+    panelBlur: "bg-white/70 backdrop-blur-xl"
   },
-  {
-    id: "scene-02",
-    x: 50,
-    y: 30,
-    title: "Scene 02 - Central Plaza",
-    description: "At the heart of commercial activity, the central plaza serves as a gathering point where multiple pathways converge. Street vendors cluster around permanent establishments, creating layers of commercial activity."
+  commerce: {
+    title: "Commercial Synergy",
+    subtitle: "Main street commerce, anchors, and wayfinding",
+    accent: "from-[#c8d8f0]/80 via-[#edf2fa]/40 to-[#f6e9da]/80",
+    panelBlur: "bg-[#f7f7f5]/70 backdrop-blur-lg"
   },
-  {
-    id: "scene-04",
-    x: 75,
-    y: 50,
-    title: "Scene 04 - Way-dependent Activity",
-    description: "Commercial activities adapt to the urban fabric, utilizing building edges, setbacks, and transitional zones. This demonstrates how businesses negotiate space within the planned layout."
+  walk: {
+    title: "Walk-Life Inventory",
+    subtitle: "Pedestrian rhythms and claimed pause points",
+    accent: "from-[#e2f0da]/60 via-[#f8f4ec]/40 to-[#d6e6eb]/80",
+    panelBlur: "bg-white/65 backdrop-blur-xl"
+  },
+  spectrum: {
+    title: "Spectrum of Appropriation",
+    subtitle: "Street micro-economies and negotiated territories",
+    accent: "from-[#f2e6dc]/70 via-[#f7f2f0]/50 to-[#dfe7f5]/80",
+    panelBlur: "bg-white/75 backdrop-blur-lg"
+  },
+  future: {
+    title: "Urban Futures",
+    subtitle: "Speculative gestures and emergent narratives",
+    accent: "from-[#e9eef9]/80 via-[#fbfaf7]/40 to-[#e3f2f7]/80",
+    panelBlur: "bg-white/80 backdrop-blur-xl"
   }
-];
+};
 
-const spectrumHotspots: Hotspot[] = [
-  {
-    id: "case-01",
-    x: 20,
-    y: 40,
-    title: "Case 01 - Temporary Appropriation",
-    description: "Lightweight, temporary structures claim public space during peak hours, demonstrating the fluid boundary between public and private use in the urban fabric."
-  },
-  {
-    id: "case-04",
-    x: 60,
-    y: 35,
-    title: "Case 04 - Semi-permanent Installation",
-    description: "Vendors establish more permanent footholds through repeated daily setup, gradually transforming temporary claims into semi-permanent fixtures of street life."
-  },
-  {
-    id: "case-08",
-    x: 85,
-    y: 45,
-    title: "Case 08 - Flexible Boundaries",
-    description: "The choreography of everyday appropriation reveals how street elements are continually adapted—a railing becomes a display, a threshold turns into a workspace."
-  }
-];
+const easingSpring = { type: "spring", stiffness: 180, damping: 24 } as const;
+const CAMERA_HEIGHT = 26;
 
-const walkLifeHotspots: Hotspot[] = [
-  {
-    id: "walk-01",
-    x: 25,
-    y: 30,
-    title: "Walking - Movement Corridor",
-    description: "The continuous pedestrian pathway defines the primary axis of movement, creating a gauntlet of commercial interactions and vehicular barriers."
-  },
-  {
-    id: "walk-02",
-    x: 50,
-    y: 55,
-    title: "Sitting - Pause Points",
-    description: "Strategic pause points emerge along the journey—under shade trees, at building edges, or on improvised seating. These moments of rest transform the path into a place."
-  },
-  {
-    id: "walk-03",
-    x: 75,
-    y: 40,
-    title: "Dwelling - Claimed Territory",
-    description: "Certain spaces become territories of extended dwelling, where vendors, workers, and residents claim ground through repeated presence and spatial negotiation."
-  }
-];
+const Loader = () => {
+  const { progress } = useProgress();
 
-const Exhibition = () => {
   return (
-    <div className="w-full">
-      <Navigation />
-      
-      {/* Hero Section */}
-      <motion.section
-        id="home"
-        className="min-h-screen w-full flex flex-col items-center justify-center px-6 md:px-12 bg-gradient-to-b from-background to-secondary/20"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 1 }}
+    <Html center>
+      <motion.div
+        className="flex flex-col items-center gap-4 px-8 py-6 rounded-3xl bg-white/60 backdrop-blur-2xl border border-white/80 shadow-[0_25px_70px_-40px_rgba(0,0,0,0.55)]"
+        initial={{ opacity: 0, scale: 0.92 }}
+        animate={{ opacity: 1, scale: 1 }}
       >
-        <motion.div
-          className="text-center max-w-4xl"
-          initial={{ y: 50 }}
-          animate={{ y: 0 }}
-          transition={{ duration: 0.8, delay: 0.3 }}
+        <motion.span
+          className="font-serif text-2xl tracking-[0.3em] text-[#766e64]"
+          animate={{
+            opacity: [0.35, 1, 0.35],
+            letterSpacing: ["0.2em", "0.4em", "0.2em"]
+          }}
+          transition={{ duration: 2.8, repeat: Infinity, ease: "easeInOut" }}
         >
-          <h1 className="font-serif text-5xl md:text-7xl text-primary mb-6 tracking-tight">
-            Spatial Narratives of Yelahanka New Town
-          </h1>
-          <p className="font-sans text-lg md:text-xl text-muted-foreground mb-8 leading-relaxed">
-            An interactive exploration of urban life, movement, and appropriation through architectural research
-          </p>
-          <motion.button
-            className="px-8 py-4 bg-primary text-primary-foreground rounded-sm font-sans text-sm uppercase tracking-wide hover:bg-primary/90 transition-colors"
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={() => {
-              document.getElementById("open-gated")?.scrollIntoView({ behavior: "smooth" });
+          YELAHANKA
+        </motion.span>
+
+        <div className="h-1.5 w-40 rounded-full bg-gradient-to-r from-[#d4cabc] via-[#afc7d4] to-[#8abed1]/80 overflow-hidden">
+          <motion.div
+            className="h-full bg-white/80"
+            style={{ width: `${progress}%` }}
+            animate={{ width: `${progress}%` }}
+            transition={{ duration: 0.3 }}
+          />
+        </div>
+
+        <motion.span className="text-xs uppercase tracking-[0.4em] text-[#868179]">
+          {Math.round(progress)}%
+        </motion.span>
+      </motion.div>
+    </Html>
+  );
+};
+
+const PanelConnector = ({ from, to, isActive }: { from: [number, number]; to: [number, number]; isActive: boolean }) => {
+  const controlX = (from[0] + to[0]) / 2;
+  const controlY = from[1] - 120;
+  const beadT = 0.62;
+  const beadX = (1 - beadT) * (1 - beadT) * from[0] + 2 * (1 - beadT) * beadT * controlX + beadT * beadT * to[0];
+  const beadY = (1 - beadT) * (1 - beadT) * from[1] + 2 * (1 - beadT) * beadT * controlY + beadT * beadT * to[1];
+
+  return (
+    <svg className="absolute inset-0 pointer-events-none">
+      <defs>
+        <linearGradient id="connectorGradient" x1="0" x2="1" y1="0" y2="1">
+          <stop offset="0%" stopColor="#a6b9c9" stopOpacity="0.85" />
+          <stop offset="60%" stopColor="#d8c7b1" stopOpacity="0.75" />
+          <stop offset="100%" stopColor="#f5ede3" stopOpacity="0.95" />
+        </linearGradient>
+        <radialGradient id="connectorNode" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.9" />
+          <stop offset="100%" stopColor="#9fb4c7" stopOpacity="0.35" />
+        </radialGradient>
+        <filter id="connectorGlow" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
+
+      <motion.path
+        d={`M ${from[0]} ${from[1]} Q ${controlX} ${controlY}, ${to[0]} ${to[1]}`}
+        fill="none"
+        stroke="url(#connectorGradient)"
+        strokeWidth={2.1}
+        strokeDasharray="3 10"
+        strokeLinecap="round"
+        filter="url(#connectorGlow)"
+        initial={{ pathLength: 0, opacity: 0 }}
+        animate={{ pathLength: isActive ? 1 : 0, opacity: isActive ? 0.85 : 0 }}
+        transition={{ duration: 0.9, ease: "easeInOut" }}
+      />
+
+      <motion.circle
+        cx={from[0]}
+        cy={from[1]}
+        r={isActive ? 4.5 : 1.5}
+        fill="url(#connectorNode)"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: isActive ? 0.9 : 0 }}
+        transition={{ duration: 0.4 }}
+      />
+
+      <motion.circle
+        cx={beadX}
+        cy={beadY}
+        r={5}
+        fill="#d8c7b1"
+        stroke="#ffffff"
+        strokeWidth={1.2}
+        initial={{ scale: 0.85, opacity: 0 }}
+        animate={{ scale: isActive ? [0.85, 1.05, 0.85] : 0.85, opacity: isActive ? 1 : 0 }}
+        transition={{ duration: 1.8, repeat: isActive ? Infinity : 0, ease: "easeInOut" }}
+      />
+
+      <motion.circle
+        cx={to[0]}
+        cy={to[1]}
+        r={6.5}
+        fill="#ffffff"
+        stroke="#adbfd0"
+        strokeWidth={1.4}
+        initial={{ scale: 0.8, opacity: 0 }}
+        animate={{ scale: isActive ? [0.9, 1.08, 0.95] : 0.8, opacity: isActive ? 1 : 0 }}
+        transition={{ duration: 1.1, repeat: isActive ? Infinity : 0, repeatType: "reverse", ease: "easeInOut" }}
+      />
+    </svg>
+  );
+};
+
+interface CameraRigProps {
+  motionX: MotionValue<number>;
+  motionZ: MotionValue<number>;
+  focus: THREE.Vector3;
+}
+
+const CameraRig = ({ motionX, motionZ, focus }: CameraRigProps) => {
+  const { camera } = useThree();
+  const target = useRef(new THREE.Vector3(motionX.get(), CAMERA_HEIGHT, motionZ.get()));
+
+  useFrame(() => {
+    target.current.set(motionX.get(), CAMERA_HEIGHT, motionZ.get());
+    camera.position.lerp(target.current, 0.1);
+    camera.lookAt(focus);
+  });
+
+  return null;
+};
+
+const ZonePanel = ({ isOpen, onClose, zone }: ZonePanelProps) => {
+  const theme = zone ? hotspotThemes[zone.theme] : undefined;
+
+  return (
+    <AnimatePresence>
+      {zone && theme && isOpen && (
+        <motion.aside
+          className={`fixed right-0 top-0 h-full w-full max-w-xl z-[60] px-6 md:px-8 py-12 ${theme.panelBlur} border-l border-white/40 shadow-[0_20px_60px_-30px_rgba(60,68,79,0.45)]`}
+          initial={{ x: "100%", opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          exit={{ x: "100%", opacity: 0 }}
+          transition={{ ...easingSpring, mass: 0.8 }}
+        >
+          <div className="flex flex-col h-full gap-10">
+            <div className="flex items-start justify-between">
+              <div className="space-y-4">
+                <motion.span
+                  className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-[0.65rem] uppercase tracking-[0.38em] text-[#5f5c58] bg-gradient-to-r ${theme.accent} shadow-[0_10px_30px_-25px_rgba(59,68,82,0.65)]`}
+                  layoutId={`subtitle-${zone.id}`}
+                >
+                  {theme.subtitle}
+                </motion.span>
+                <motion.h2 className="font-serif text-4xl text-[#232421] leading-tight" layoutId={`title-${zone.id}`}>
+                  {zone.name}
+                </motion.h2>
+              </div>
+              <motion.button
+                onClick={onClose}
+                className="rounded-full border border-black/10 text-[0.65rem] px-5 py-2 tracking-[0.42em] uppercase text-[#5a5a58] hover:border-black/30"
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                Close
+              </motion.button>
+            </div>
+
+            <motion.div
+              className="relative flex-1 overflow-y-auto pr-2 space-y-10"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 12 }}
+              transition={{ duration: 0.4, delay: 0.08 }}
+            >
+              <motion.div
+                className={`rounded-3xl border border-white/40 ${theme.panelBlur} shadow-[0_18px_70px_-35px_rgba(0,0,0,0.45)] overflow-hidden`}
+                layoutId={`media-${zone.id}`}
+              >
+                <div className="h-64 w-full bg-gradient-to-br from-black/5 via-white/5 to-white/30">
+                  {zone.media ? (
+                    <img src={zone.media} alt={zone.name} className="h-full w-full object-cover mix-blend-luminosity" />
+                  ) : (
+                    <div className="h-full w-full flex items-center justify-center text-[#676765]/70">
+                      <span className="tracking-[0.6em] uppercase text-xs">Sketch pending</span>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+
+              <motion.p
+                className="text-[1.05rem] leading-relaxed text-[#383937]/90 tracking-wide"
+                layoutId={`description-${zone.id}`}
+              >
+                {zone.description}
+              </motion.p>
+
+              {zone.tags?.length ? (
+                <motion.div
+                  className="rounded-2xl border border-white/50 bg-white/60 backdrop-blur-xl px-5 py-4"
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.45, delay: 0.18 }}
+                >
+                  <p className="text-[0.65rem] uppercase tracking-[0.45em] text-[#8a8780] mb-3">Motifs</p>
+                  <div className="flex flex-wrap gap-3">
+                    {zone.tags.map((tag) => (
+                      <motion.span
+                        key={tag}
+                        className="px-4 py-2 rounded-full border border-white/70 text-[0.7rem] uppercase tracking-[0.34em] text-[#5f5c58] bg-white/50 shadow-[0_12px_30px_-25px_rgba(0,0,0,0.45)]"
+                        whileHover={{ scale: 1.05 }}
+                      >
+                        {tag}
+                      </motion.span>
+                    ))}
+                  </div>
+                </motion.div>
+              ) : null}
+
+              <motion.div
+                className="rounded-2xl border border-[#dad3c8]/60 bg-white/70 backdrop-blur-xl px-5 py-4 text-[0.7rem] uppercase tracking-[0.42em] text-[#716f6a] flex items-center justify-between"
+                initial={{ opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.45, delay: 0.28 }}
+              >
+                <span>Hold & drag the terrain to roam</span>
+                <span className="inline-flex items-center gap-2">
+                  <span className="h-1 w-12 rounded-full bg-gradient-to-r from-[#c5b6a3] to-[#aebfd6]" />
+                  Orbit Tips
+                </span>
+              </motion.div>
+            </motion.div>
+          </div>
+        </motion.aside>
+      )}
+    </AnimatePresence>
+  );
+};
+
+const HotspotRig = ({ zones, onSelectZone, activeZoneId }: { zones: HotspotZone[]; onSelectZone: (zone: HotspotZone) => void; activeZoneId?: string }) => {
+  return (
+    <group>
+      {zones.map((zone) => (
+        <Float key={zone.id} speed={2.5} rotationIntensity={0.05} floatIntensity={0.2}>
+          {(() => {
+            const isActive = activeZoneId === zone.id;
+            const [sx, sy, sz] = zone.size ?? [0.8, 0.8, 0.8];
+            return (
+          <mesh
+            position={zone.position}
+            onClick={() => onSelectZone(zone)}
+            onPointerOver={(event) => {
+              event.stopPropagation();
+              document.body.style.cursor = "pointer";
+            }}
+            onPointerOut={() => {
+              document.body.style.cursor = "auto";
             }}
           >
-            Begin Exhibition
-          </motion.button>
-        </motion.div>
-      </motion.section>
+            <boxGeometry args={[sx, sy + (isActive ? 0.35 : 0), sz]} />
+            <meshStandardMaterial
+              color={zone.color}
+              roughness={0.3}
+              metalness={0.15}
+              emissive={isActive ? "#f2decf" : "#000000"}
+              emissiveIntensity={isActive ? 0.45 : 0.05}
+            />
+            <Html
+              position={[0, sy / 2 + (isActive ? 0.45 : 0.25), 0]}
+              transform
+              occlude
+              className="pointer-events-none"
+            >
+              <motion.div
+                className="px-3 py-1 rounded-full text-xs uppercase tracking-[0.35em] bg-[#f8f4ef]/80 text-[#3d3c39]"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0, scale: isActive ? 1.05 : 1 }}
+                transition={{ duration: 0.4 }}
+              >
+                {zone.name}
+              </motion.div>
+            </Html>
+          </mesh>
+            );
+          })()}
+        </Float>
+      ))}
+    </group>
+  );
+};
 
-      {/* Open / Gated */}
-      <ExhibitSection id="open-gated" title="Open / Gated">
-        <div className="grid md:grid-cols-2 gap-8">
-          <img src={openGated} alt="Open and Gated Communities Comparison" className="w-full h-auto rounded-sm" />
-          <div className="flex flex-col justify-center">
-            <p className="exhibit-body mb-4">
-              In Yelahanka New Town, the urban fabric is composed of low-rise, independently built houses. Along the main roads, a mix of retail and informal commercial activities thrive, with street vendors occupying footpaths and setting up temporary stalls, while vendors occupy footpaths and street edges, making everyday essentials easily accessible.
-            </p>
-            <p className="exhibit-body">
-              In contrast, gated communities are dominated by high-rise complexes where access to open and green spaces is limited and often exclusive. The surrounding streets prioritize vehicles over pedestrians, leaving little room for informal activity. Within these enclaves, commercial amenities are distant, with walls and controlled access becoming sterile—its vitality replaced by isolation and controlled access.
-            </p>
-          </div>
-        </div>
-      </ExhibitSection>
+const GroundPlane = () => {
+  let texture: THREE.Texture | null = null;
+  try {
+    texture = useLoader(THREE.TextureLoader, "/assets/yelahanka-map.png");
+  } catch {
+    texture = null;
+  }
 
-      {/* Commercial Proximity and Synergy */}
-      <ExhibitSection id="commercial-proximity" title="Commercial Proximity and Synergy" className="bg-secondary/10">
-        <div className="space-y-8">
-          <p className="exhibit-body text-center max-w-3xl mx-auto">
-            This map explores the interplay of activities that unfolds through everyday relationships between temporary and permanent structures along the main street of Yelahanka New Town. It traces how footpath vendors—selling vegetables, fruits, flowers, coconuts, and other essentials—position themselves around permanent establishments such as banks, restaurants, and general stores.
-          </p>
-          <InteractiveMap
-            imageUrl={commercialProximity}
-            hotspots={commercialHotspots}
-            alt="Commercial Proximity and Synergy Mapping"
-          />
-          <p className="exhibit-body text-center max-w-3xl mx-auto mt-6">
-            Permanent shops act as anchors, generating steady pedestrian flow and defining the commercial tone. Their performance, lighting, and visibility provide a framework around which other activities cluster. Temporary vendors respond fluidly—occupying high-traffic zones outside supermarkets, near eateries, beside ATMs, or under shaded trees—extending activity into the open street.
-          </p>
-        </div>
-      </ExhibitSection>
+  return (
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -1.4, 0]} receiveShadow>
+      <planeGeometry args={[35, 35]} />
+      <meshStandardMaterial
+        color="#f2efe9"
+        metalness={0.05}
+        roughness={0.85}
+        map={texture ?? undefined}
+        transparent={!!texture}
+        opacity={texture ? 0.98 : 1}
+      />
+    </mesh>
+  );
+};
 
-      {/* Walk-Life Inventory */}
-      <ExhibitSection id="walk-life" title="Walk-Life Inventory">
-        <div className="space-y-8">
-          <p className="exhibit-body text-center max-w-3xl mx-auto">
-            The walk-life inventory features two protagonists: <em>Walking</em>, the agent of movement, and <em>Sitting</em>, the act of claiming place—theirs is a symbiotic story. In Yelahanka, the journey of one begins only through the arrival of the other. Together, they narrate the ongoing negotiation of public life on the street.
-          </p>
-          <InteractiveMap
-            imageUrl={walkLifeInventory}
-            hotspots={walkLifeHotspots}
-            alt="Walk-Life Inventory Mapping"
-          />
-          <p className="exhibit-body text-center max-w-3xl mx-auto mt-6">
-            For <em>Walking</em>, the path is a gauntlet of obstructions and approaching vehicles. Yet sitting deep human need requires one to pause and simply <em>be</em>. A quiet rebellion unfolds as residents find their own places of rest—against a tree, on a bench, at a low wall, a social ledge. <em>Sitting</em> transforms the path into place, and the <em>katte</em> beneath a tree emerges as the ultimate destination—a testament to shade, community, and stillness.
-          </p>
-        </div>
-      </ExhibitSection>
+const AtmosphericLight = ({ tilt }: { tilt: number }) => (
+  <group>
+    <ambientLight intensity={0.35} />
+    <SpotLight
+      position={[15 + tilt * 3, 18, 20 + tilt * 5]}
+      angle={0.35}
+      penumbra={0.7}
+      intensity={1.2}
+      castShadow
+      shadow-mapSize-width={1024}
+      shadow-mapSize-height={1024}
+      color="#f7efe5"
+    />
+    <SpotLight
+      position={[-12 + tilt * 4, 16, -18 + tilt * 3]}
+      angle={0.45}
+      penumbra={0.5}
+      intensity={0.75}
+      color="#c9d8f0"
+    />
+  </group>
+);
 
-      {/* Spectrum of Appropriation */}
-      <ExhibitSection id="spectrum" title="Spectrum of Appropriation" className="bg-secondary/10">
-        <div className="space-y-8">
-          <p className="exhibit-body text-center max-w-3xl mx-auto">
-            This map explores the street as a dynamic, negotiated space rather than a static physical entity. What is designed as carriageway, footpath, or threshold continually evolves through everyday acts of use—displaying goods, setting up stalls, extending furniture, or occupying boundaries between public and private, revealing the lived complexities of urban space.
-          </p>
-          <InteractiveMap
-            imageUrl={spectrumAppropriation}
-            hotspots={spectrumHotspots}
-            alt="Spectrum of Appropriation"
-          />
-          <p className="exhibit-body text-center max-w-3xl mx-auto mt-6">
-            Through repeated visits and informal interviews, the study observed how street elements are continually adapted—a railing becomes a display, a tree anchors shade, a threshold turns into a workspace. Eight representative cases illustrate this choreography of everyday appropriation—21% of use is highly controlled, 67% allows flexible negotiation, and 22% exhibits casual, spontaneous appropriation.
-          </p>
-        </div>
-      </ExhibitSection>
+const Exhibition = () => {
+  const { zonesByTheme, orderedZones } = useHotspots();
+  const [activeZone, setActiveZone] = useState<HotspotZone | null>(null);
+  const cameraFocus = useMemo(() => new THREE.Vector3(0, 2.6, 0), []);
+  const { scrollYProgress } = useScroll();
+  const cameraX = useTransform(scrollYProgress, [0, 1], [16, -4]);
+  const cameraZ = useTransform(scrollYProgress, [0, 1], [24, 12]);
+  const cameraMotionX = useSpring(cameraX, easingSpring);
+  const cameraMotionZ = useSpring(cameraZ, easingSpring);
+  const lightTilt = useTransform(scrollYProgress, [0, 1], [0.3, -0.25]);
+  const lightMotion = useSpring(lightTilt, easingSpring);
+  const [lightTiltValue, setLightTiltValue] = useState(0);
+  const getConnectorTarget = useCallback((): [number, number] => {
+    if (typeof window === "undefined") {
+      return [640, 140];
+    }
+    return [Math.max(window.innerWidth - 200, 420), 140];
+  }, []);
+  const [connectorTo, setConnectorTo] = useState<[number, number]>(() => getConnectorTarget());
+  const connectorFrom: [number, number] = [320, 120];
 
-      {/* Setting and Materiality */}
-      <ExhibitSection id="setting" title="Setting and Materiality">
-        <div className="grid md:grid-cols-2 gap-8">
-          <img src={settingMateriality} alt="Setting and Materiality of the Street" className="w-full h-auto rounded-sm" />
-          <div className="flex flex-col justify-center">
-            <p className="exhibit-body mb-4">
-              The mapping examines how sidewalks interact with the adjoining built and unbuilt environment, revealing them as dynamic, negotiated zones rather than mere transit spaces. Sidewalks are continually reshaped by street activities—shop spillovers, vehicular and temporary encroachments, producing elements such as balustrades, signage, and shade-giving infrastructure.
-            </p>
-            <p className="exhibit-body">
-              The study identifies distinct "settings" that emerge through the interplay of permanent and temporary elements and built form: chairs, tables, signboards become tools for informal spatial negotiation. Physical features—drainage heights, concrete blocks, and HT panels—anchor these evolving micro-environments, often linked to power lines. Materiality plays a crucial role: from the solidity of built edges to ephemeral zones. Together, these negotiations shape the street's living infrastructure.
-            </p>
-          </div>
-        </div>
-      </ExhibitSection>
+  useMotionValueEvent(lightMotion, "change", (latest) => {
+    setLightTiltValue(latest);
+  });
 
-      {/* Planned / "Planned" */}
-      <ExhibitSection id="planned" title="Planned / &quot;Planned&quot;" className="bg-secondary/10">
-        <div className="grid md:grid-cols-2 gap-8">
-          <div className="flex flex-col justify-center order-2 md:order-1">
-            <p className="exhibit-body mb-4">
-              This map compares two neighboring parts of Bangalore, Yelahanka's New Town, developed as the early 1980s by the Karnataka Housing Board as a planned township, and the more recent, private-sector Puttanhalli Road beyond Puttenahalli Lake.
-            </p>
-            <p className="exhibit-body">
-              Yelahanka New Town is defined by its open, non-gated neighborhoods and a spatial continuity that allows direct access from house to street, from one street to another. The new gated complexes embody a model of urban living based on boundedness—each one encircled, self-contained. These enclaves function as isolated fragments within the urban fabric, limiting social interaction, blurring the collective sense of neighborhood that once defined Yelahanka's planned community.
-            </p>
-          </div>
-          <img src={planned} alt="Planned versus Planned Urban Development" className="w-full h-auto rounded-sm order-1 md:order-2" />
-        </div>
-      </ExhibitSection>
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const handleResize = () => setConnectorTo(getConnectorTarget());
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [getConnectorTarget]);
 
-      {/* Urban Futures */}
-      <ExhibitSection id="urban-futures" title="Urban Futures">
-        <div className="space-y-8">
-          <div className="grid md:grid-cols-2 gap-8">
-            <img src={urbanFutures1} alt="Urban Futures Vision" className="w-full h-auto rounded-sm" />
-            <div className="flex flex-col justify-center">
-              <h3 className="font-serif text-2xl text-primary mb-4">A Street is Not a Street</h3>
-              <p className="exhibit-body mb-4">
-                The modern city was born from the machine's rhythm—a vision without rest. Factories separated home from work, and the logic of movement between the two places became a critical element. The street, once a site of encounter, was flattened into a line on a tracing paper.
-              </p>
-              <p className="exhibit-body">
-                In India, this idea meets resistance. Here, the street refuses abstraction. It is rubbed, shaped, and claimed by life—by vendors, walkers, shadows, and sounds. What the plan calls infrastructure, the city calls habitation. The street becomes a theatre of everyday life—a dialectic of movement and rest. What planners call encroachment, the city calls improvisation.
-              </p>
+  return (
+    <MotionConfig transition={easingSpring}>
+      <div className="relative min-h-screen bg-[#f7f4ef] text-[#2f2f2c]">
+        <Navigation />
+
+        <main className="relative">
+          <section id="home" className="min-h-screen flex flex-col justify-center items-center px-6 pt-32 md:pt-36">
+            <motion.div
+              initial={{ opacity: 0, y: 40 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 1 }}
+              className="text-center max-w-5xl"
+            >
+              <motion.h1 className="font-serif text-5xl md:text-7xl tracking-tight">
+                Exploring Yelahanka: A Narrative of Spaces
+              </motion.h1>
+              <motion.p
+                className="mt-6 text-base md:text-lg leading-relaxed text-[#565552]"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3, duration: 0.8 }}
+              >
+                A cinematic, tactile journey through Bengaluru’s Yelahanka — translating urban research into a living sculpture of light, motion, and story.
+              </motion.p>
+              <motion.div className="mt-10">
+                <motion.button
+                  className="rounded-full border border-[#3e3e3b]/20 px-10 py-4 uppercase tracking-[0.4em] text-xs text-[#42423f] hover:border-[#3e3e3b]/40"
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.96 }}
+                  onClick={() => {
+                    const firstSection = document.getElementById("terrain");
+                    firstSection?.scrollIntoView({ behavior: "smooth" });
+                  }}
+                >
+                  Enter the terrain
+                </motion.button>
+              </motion.div>
+            </motion.div>
+            <motion.div
+              className="absolute bottom-10 flex flex-col items-center text-[0.7rem] uppercase tracking-[0.55em] text-[#8d8b87]"
+              animate={{ y: [0, 4, 0], opacity: [0.5, 1, 0.5] }}
+              transition={{ duration: 2.8, repeat: Infinity, ease: "easeInOut" }}
+            >
+              <span>Scroll to navigate</span>
+              <span className="w-px h-10 bg-gradient-to-b from-[#9ba7b7] to-transparent mt-3" />
+            </motion.div>
+          </section>
+
+          <section id="terrain" className="relative min-h-screen">
+            <div className="sticky top-0 h-screen">
+              <div className="absolute inset-0">
+                <Canvas shadows dpr={[1, 2]} camera={{ position: [0, CAMERA_HEIGHT, 0.01], fov: 50 }}>
+                  <Suspense fallback={<Loader />}>
+                    <color attach="background" args={["#f7f4ef"]} />
+                    <SoftShadows size={24} focus={0.8} samples={12} />
+                    <AtmosphericLight tilt={lightTiltValue} />
+
+                    <MapControls
+                      enableRotate
+                      enablePan
+                      enableZoom
+                      zoomSpeed={0.9}
+                      rotateSpeed={0.5}
+                      minDistance={12}
+                      maxDistance={70}
+                      minPolarAngle={Math.PI / 3.2}
+                      maxPolarAngle={Math.PI / 2.02}
+                      target={[0, 0, 0]}
+                    />
+
+                    <group>
+                      <GroundPlane />
+                      <BuildingExtrusions />
+                      <HotspotRig zones={orderedZones} onSelectZone={setActiveZone} activeZoneId={activeZone?.id} />
+                    </group>
+
+                    <Environment preset="sunset" />
+                  </Suspense>
+                </Canvas>
+              </div>
+
+              <div className="absolute inset-0 pointer-events-none">
+                <MotionConfig transition={{ type: "spring", stiffness: 150, damping: 20 }}>
+                  <AnimatePresence>
+                    {activeZone ? (
+                      <motion.div
+                        key={activeZone.id}
+                        className="absolute left-0 top-1/3 w-80 px-6"
+                        initial={{ opacity: 0, x: -40 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        exit={{ opacity: 0, x: -40 }}
+                      >
+                        <motion.div className="rounded-3xl border border-white/60 bg-white/60 backdrop-blur-lg shadow-[0_12px_50px_-25px_rgba(0,0,0,0.4)] p-6">
+                          <motion.p className="text-xs uppercase tracking-[0.45em] text-[#7f7d79]">
+                            {hotspotThemes[activeZone.theme].title}
+                          </motion.p>
+                          <motion.h3 className="mt-4 text-xl font-semibold text-[#2f2e2b]">
+                            {activeZone.name}
+                          </motion.h3>
+                          <motion.p className="mt-3 text-sm leading-relaxed text-[#494845]/80">
+                            {activeZone.description}
+                          </motion.p>
+                        </motion.div>
+                        <PanelConnector from={connectorFrom} to={connectorTo} isActive={!!activeZone} />
+                      </motion.div>
+                    ) : null}
+                  </AnimatePresence>
+                </MotionConfig>
+              </div>
             </div>
-          </div>
-          
-          <div className="text-center py-8">
-            <p className="exhibit-body max-w-3xl mx-auto mb-6">
-              What seems disorder is a continuous negotiation. Mapping Yelahanka Streets traces this vitality through six visual essays. Each map reads the street as a theatre of everyday life—not by design alone, but by gesture, negotiation, and time.
-            </p>
-            <p className="exhibit-body max-w-3xl mx-auto italic">
-              The maps reveal the street as a living entity—shaped by movement, public and everyday negotiations. They articulate how people, materials, and time choreograph the streets, showing that vitality is not a relic of the past, but an ongoing urban choreography: where permanence and adaptability coexist to sustain Yelahanka's social, economic, and sensory life.
-            </p>
-          </div>
+          </section>
 
-          <div className="mt-16 pt-8 border-t border-border">
-            <h3 className="font-serif text-xl text-primary mb-6 text-center">Research Team</h3>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
-              <div className="exhibit-body">
-                <p className="font-semibold">Hamza Lateque</p>
-                <p className="text-sm text-muted-foreground">Principal Investigator</p>
-              </div>
-              <div className="exhibit-body">
-                <p className="font-semibold">Tanay Sinha</p>
-                <p className="text-sm text-muted-foreground">Research Associate</p>
-              </div>
-              <div className="exhibit-body">
-                <p className="font-semibold">Neil Nair</p>
-                <p className="text-sm text-muted-foreground">Research Associate</p>
-              </div>
-              <div className="exhibit-body">
-                <p className="font-semibold">Kiran Kumar</p>
-                <p className="text-sm text-muted-foreground">Research Assistant</p>
-              </div>
+          <section className="relative z-10 bg-gradient-to-b from-[#f6f0e8] via-[#eef2f5] to-[#f9f7f4]">
+            <div className="mx-auto max-w-6xl px-6 py-28 space-y-24">
+              {Object.entries(zonesByTheme).map(([themeKey, zones]) => {
+                const theme = hotspotThemes[themeKey as HotspotZone["theme"]];
+                const themeId = `theme-${themeKey}`;
+
+                return (
+                  <motion.div
+                    key={themeKey}
+                    id={themeId}
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true, margin: "-100px" }}
+                  >
+                    <div className="flex flex-col md:flex-row gap-12">
+                      <motion.div className="md:w-1/2 space-y-6">
+                        <motion.p className="text-xs uppercase tracking-[0.5em] text-[#807f7a]">{theme.subtitle}</motion.p>
+                        <motion.h2 className="font-serif text-4xl text-[#232321]">{theme.title}</motion.h2>
+                        <motion.p className="text-sm md:text-base leading-loose text-[#4f4e4b]">
+                          {zones[0]?.summary ?? "Each block articulates the lived conditions of Yelahanka, where planned geometries meet improvised everyday life."}
+                        </motion.p>
+                      </motion.div>
+
+                      <div className="md:w-1/2 space-y-8">
+                        {zones.map((zone) => (
+                          <motion.button
+                            key={zone.id}
+                            className="w-full text-left"
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                            onClick={() => setActiveZone(zone)}
+                          >
+                            <div className="rounded-2xl border border-white/70 bg-white/50 backdrop-blur-lg shadow-[0_15px_35px_-30px_rgba(0,0,0,0.4)] p-6">
+                              <p className="text-xs uppercase tracking-[0.4em] text-[#807d79]">{zone.name}</p>
+                              <p className="mt-3 text-sm leading-relaxed text-[#4a4946]/85">{zone.description}</p>
+                              {zone.tags?.length ? (
+                                <div className="mt-4 flex flex-wrap gap-3">
+                                  {zone.tags.map((tag) => (
+                                    <span key={tag} className="text-[0.65rem] uppercase tracking-[0.32em] text-[#777672] border border-white/70 px-3 py-1 rounded-full">
+                                      {tag}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : null}
+                            </div>
+                          </motion.button>
+                        ))}
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })}
             </div>
-          </div>
-        </div>
-      </ExhibitSection>
-    </div>
+          </section>
+        </main>
+
+        <ZonePanel isOpen={!!activeZone} zone={activeZone ?? undefined} onClose={() => setActiveZone(null)} />
+      </div>
+    </MotionConfig>
   );
 };
 
